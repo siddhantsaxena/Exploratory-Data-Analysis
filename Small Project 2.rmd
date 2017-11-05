@@ -1,0 +1,220 @@
+---
+title: "EDA Small Project 2"
+author: "Siddhant Saxena,Nisha Chandwani, SriMegha Vujjini"
+date: "November 2, 2017"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Loading Data and Naming the columns 
+
+```{r cars}
+library(plyr)
+original_data <- read.table("http://www.stat.ufl.edu/~winner/data/concussion.dat")
+View(original_data)
+# name columns 
+colnames(original_data) <- c('Gender','Sport','AcademicYear','ConcussionId','Count')
+
+```
+
+#### QUESTION 1 
+## BIT I
+
+```{r}
+#change column types of Acaxemic Year and Concussion Id to factors
+original_data$ConcussionId = as.factor(original_data$ConcussionId)
+
+original_data$AcademicYear= as.factor(original_data$AcademicYear)
+
+```
+
+1st method of fitting data 
+```{r}
+# ---------------First one:
+library(ggplot2)
+conc_1 = subset(original_data, ConcussionId == 1)
+conc_0 = subset(original_data, ConcussionId == 0)
+
+conc <- merge(conc_0,conc_1,by=c("Gender", "Sport", "AcademicYear"))
+head(conc)
+conc.logit = glm(cbind(Count.x, Count.y) ~ Gender+Sport+AcademicYear+Gender:Sport, family = binomial, data = conc)
+
+conc.model.df = conc
+conc.model.df$.fitted = fitted.values(conc.logit)
+conc.model.df$.resid = residuals(conc.logit, type = "response")
+ggplot(conc.model.df, aes(x = .fitted, y = .resid)) + geom_point() + geom_smooth(method = "loess",
+                                                                                   method.args = list(degree = 1))
+```
+
+
+
+2nd method of fitting data
+Replication
+Since the dependent variable appears the times that is equal to it's value we will just replicate it as many times for the logistic regression to be correct. 
+
+```{r}
+expanded.data <- original_data[rep(row.names(original_data),original_data$Count),1:4]
+View(expanded.data)
+```
+
+Now fit the model to the expanded dataset:
+
+```{r}
+model = glm(data = expanded.data,ConcussionId ~ Gender+AcademicYear+Sport,family = 'binomial')
+summary(model)
+```
+ 
+On adding interaction terms-The value of either of Gender or Academic year or Sport seems to be fairly independent and does not seem to have an effect on values of others so it does not make sense to add interaction terms.
+ 
+
+We see some of the points with a high residual value and most of the points with a low residual value , I think this occurs because most of the points are predicted to have a concussion Id 0( on account of an imbalenced dataset) so the few that have concussion id 1 have a high residual , the loess function nevertheless fits the curve very close to zero. 
+
+## BIT II 
+Let's find out the fitted probabilities of concussion ID's. The idea is to assign '1' to an ID with probability greater than 0.5 and make a table to see the number of errors our model makes. 
+
+```{r}
+pred <-predict(model,type="response")
+confusionMatrix<-table(pred>0.5, expanded.data$ConcussionId)
+
+tail(pred)
+print(confusionMatrix)
+```
+
+As we see there are no true values, none of the data points have a probability greater than 0.5 implying all the actual 0s are rightly classified and all the actual 1s are wrongly classified. 
+We calculate the error rate = wrong classification/total classifications 
+
+```{r}
+errorRate = confusionMatrix[1,2]/(confusionMatrix[1,1]+confusionMatrix[1,2])
+print(errorRate)
+```
+We observe a very low error rate of about 0.07%
+
+Now lets fit the null model , that is concussion ID regressed upon a constant and no predictors
+```{r}
+nullModel <- glm(data = expanded.data,family = 'binomial', ConcussionId~1)
+```
+
+We repeat and find the nullPred
+```{r}
+nullPred <-predict(model,type="response")
+nullConfusionMatrix<-table(nullPred>0.5, expanded.data$ConcussionId)
+head(nullPred)
+#print(nullConfusionMatrix)
+
+```
+```{r}
+errorRateNull = nullConfusionMatrix[1,2]/(nullConfusionMatrix[1,1]+nullConfusionMatrix[1,2])
+print(errorRateNull)
+```
+
+So errorRate and errorRateNull are both equal. We can interpret this as follows:
+
+a) The reason of getting these low error rates is that the data is highly imbalanced towards one of the values (in concussionID), One way to think about this is even if we blindly assign all the concussion IDs as 0 we will get the exact same accuracy which points out to two things: 
+- The ability of prediction of our model is not at all imporessive 
+- Error rates and accuracy in such imbalenced data scenarios are highly misleading and hence not a correct measure of evaluation. 
+  
+b) The null model predicted the probability of  0.001841231 uniformly for all the data points. Our model although predicted different probabilities ( depending on different values of predictors) all of them were below the set threshold (0.5) for both the models so all the points are predicted as 0s thus making the error rates equal. 
+
+Though the values of predicted probabilities in our model are all different but practically yes our model is useless in this case. 
+
+#### QUESTION 2
+#### BIT 1
+
+```{r}
+library(ggplot2)
+library(vcd)
+library(ggmosaic)
+
+#Subset of data with only concussions
+data_1 = subset(original_data, ConcussionId == 1)
+
+#Bar Graph
+ggplot(data_1, aes(x = Sport, y = Count, fill = Sport)) + geom_bar(stat = "identity") + facet_wrap(~Gender+AcademicYear, nrow = 2) + xlab("SPORT") + ylab("COUNTS OF CONCUSSION") + theme(text = element_text(size=12), axis.text.x = element_text(angle=30, hjust= 1, size = 10)) + ggtitle("Counts of Concussion varied by Sports, Gender and Year") + labs(fill = "Sport")
+```
+```{r}
+#Mosaic Plot
+ggplot(data = data_1) + geom_mosaic(aes(weight = Count, x = product(Sport,AcademicYear),fill=Sport), na.rm=TRUE,show.legend=TRUE) +xlab("Academic Year") +facet_wrap(~Gender) + labs(fill = "Sport") + ggtitle("Counts of Concussion by Year, Gender, Sport")
+
+```
+
+From the above two graphs, we can conclude the following things:
+1. The rate of concussions is the highest in Soccer for both males and females. 
+
+2. For Basketball, Softball/Baseball and Soccer, the concussion counts are higher in females than for males. 
+
+3. Concussions in Soccer and Softball/Baseball are highest in 1999 for both the genders. 
+
+4. Concussions caused in Basketball is highest in 1998 for both the genders.
+
+5. In Softball/Baseball, the counts are increasing every year for females. 
+
+6. For males, all the sports except Soccer have the highest concussion counts in 1998. 
+
+7. Only in 1997, Gymnastics for females recorded slightly higher concussion rates compared to every other factor. 
+
+#### BIT 2
+
+```{r}
+#(a)
+#install.packages("arm")
+library(arm)
+conc.glm = glm(Count ~ factor(Sport)+factor(Gender)+AcademicYear, family = poisson, data = data_1)
+display(conc.glm)
+conc.fitted = fitted.values(conc.glm)
+conc.resid = residuals(conc.glm, type = "response")
+conc.std.resid = conc.resid/sqrt(conc.fitted)
+```
+```{r}
+#Overdispersion 
+overdispersion = sum(conc.std.resid^2)/df.residual(conc.glm)
+print(overdispersion)
+```
+
+We can see that the overdispersion value is more than 1 but still not very high. This can count as a slight evidence of overdispersion in the data.
+
+```{r}
+# (b)
+conc.glm2 = glm(Count ~ factor(Sport, levels = c("Lacrosse","Basketball","Gymnastics","Soccer","Softball/Baseball")) + factor(Gender)+AcademicYear, family = poisson, data = data_1)
+
+sport.co = coefficients(summary(conc.glm2))[1:5, 1:2]
+sports = c("Basketball","Gymnastics","Soccer","Softball/Baseball")
+estimate = exp(sport.co[2:5, 1])
+lower = exp(sport.co[2:5, 1] - 2 * sport.co[2:5, 2])
+upper = exp(sport.co[2:5, 1] + 2 * sport.co[2:5, 2])
+sport.co.df = data.frame(sports, estimate, lower, upper)
+
+#Plot
+ggplot(sport.co.df, aes(x = sports, y = estimate, ymin = lower, ymax = upper)) + geom_pointrange() + geom_abline(intercept = 1, slope = 0, color = "red") + ylab("Ratio of concussion count to that of Lacrosse") + ggtitle("Approximate 95% confidence intervals") + coord_flip()
+```
+From the graph, we can interpret that: 
+1. With 95% confidence, we can say that the concussion counts in Soccer are very high while those of Softball/Baseball and Basketball are slightly higher than the baseline sport. 
+
+2. In the case of Gymnastics, the value is very low, almost close to zero implying that the count is very less when compared to Lacrosse. 
+
+3. With respect to confidence intervals, we see that the ranges for Basketball and Softball/Baseball are almost similar. Thus, with 95% confidence we can say that they have similar counts. 
+
+4. For Softball/Baseball, the interval includes 1 and thus we can expect the concussion counts to be similar for this sport and the baseline sport.
+
+5. The interval for soccer is very wide and thus it is probably not a good idea to draw inference for this sport.
+
+
+When we baseline Gymnastics as the sport, we get the following graph:
+```{r}
+#With Gymnastics as baseline sport
+conc.glm3 = glm(Count ~ factor(Sport, levels = c("Gymnastics","Basketball","Lacrosse","Soccer","Softball/Baseball")) + factor(Gender)+AcademicYear, family = poisson, data = data_1)
+
+sport.co1 = coefficients(summary(conc.glm3))[1:5, 1:2]
+sports1 = c("Basketball","Lacrosse", "Soccer","Softball/Baseball")
+estimate1 = exp(sport.co1[2:5, 1])
+lower1 = exp(sport.co1[2:5, 1] - 2 * sport.co1[2:5, 2])
+upper1 = exp(sport.co1[2:5, 1] + 2 * sport.co1[2:5, 2])
+sport.co.df1 = data.frame(sports1, estimate1, lower1, upper1)
+
+#Plot
+ggplot(sport.co.df1, aes(x = sports1, y = estimate1, ymin = lower1, ymax = upper1)) + geom_pointrange() + geom_abline(intercept = 1, slope = 0, color = "red") + ylab("Ratio of concussion count to that of Gymnastics") + ggtitle("Approximate 95% confidence intervals") + coord_flip()
+```
+
+We see that the confidence interval for all the sports is very wide when the baseline sport is Gymnastics. In addition, we can say with 95% confidence that the values for Softball/Baseball, Soccer, Lacrosee and Basketball are higher than Gymnastics as the ratios are way higher than expected. We can conclude that Gymnastics as a baseline would be a bad decision as we will prefer smaller confidence intervals. It is always better to have a domain knowledge as it will give a better insight as to which sport to baseline. 
